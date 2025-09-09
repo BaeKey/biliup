@@ -1,6 +1,7 @@
 from typing import Optional
 from urllib.parse import unquote, urlparse, parse_qs, urlencode, urlunparse
 import execjs
+from quickjs import Function
 import requests
 import random
 import os
@@ -204,30 +205,38 @@ class Douyin(DownloadBase):
                 pass
 
     async def get_xbogus(self, url: str) -> str:
-        """X-bogus算法"""
         try:
             query = urlparse(url).query
-            user_agent = self.fake_headers.get('user-agent', DouyinUtils.DOUYIN_USER_AGENT)
-            
-            # 查找x-bogus.js文件
+            user_agent = self.fake_headers.get(
+                'user-agent',
+                DouyinUtils.DOUYIN_USER_AGENT
+            )
+    
+            # 查找 x-bogus.js 文件
             js_script_path = None
             possible_paths = [
                 os.path.join(os.path.dirname(__file__), 'douyin/x-bogus.js')
             ]
-            
+    
             for path in possible_paths:
                 if os.path.exists(path):
                     js_script_path = path
                     break
-            
-            if js_script_path:
-                with open(js_script_path, 'r', encoding='utf-8') as f:
-                    js_code = f.read()
-                xbogus = execjs.compile(js_code).call('sign', query, user_agent)
-                return xbogus
-            else:
+    
+            if not js_script_path:
                 logger.warning(f"{self.plugin_msg}: 未找到x-bogus.js文件，可能无法绕过风控")
                 return ""
+    
+            # 读取 JS 文件内容
+            with open(js_script_path, 'r', encoding='utf-8') as f:
+                js_code = f.read()
+    
+            # 用 quickjs 执行 sign 函数
+            func = Function("sign_wrapper", js_code + "\nreturn sign;")
+            sign = func()
+            xbogus = sign(query, user_agent)
+            return xbogus
+    
         except Exception as e:
             logger.warning(f"{self.plugin_msg}: X-Bogus生成失败: {e}")
             return ""
