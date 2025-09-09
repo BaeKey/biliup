@@ -1,6 +1,6 @@
 # Build biliup's web-ui
 FROM node:lts AS webui
-ARG repo_url=https://github.com/biliup/biliup
+ARG repo_url=https://github.com/BaeKey/biliup
 ARG branch_name=master
 RUN set -eux; \
 	git clone --depth 1 --branch "$branch_name" "$repo_url"; \
@@ -10,7 +10,7 @@ RUN set -eux; \
 
 # Deploy Biliup
 FROM python:3.12-slim AS biliup
-ARG repo_url=https://github.com/biliup/biliup
+ARG repo_url=https://github.com/BaeKey/biliup
 ARG branch_name=master
 ENV TZ="Asia/Shanghai"
 ENV LANG="C.UTF-8"
@@ -80,7 +80,7 @@ RUN set -eux; \
 	apt-get install -y --no-install-recommends git g++; \
 	git clone --depth 1 --branch "$branch_name" "$repo_url"; \
 	cd biliup && \
-	pip3 install --no-cache-dir quickjs && \
+	pip3 install --no-cache-dir quickjs PyExecJS && \
 	pip3 install -e . && \
 	\
 	# Clean up \

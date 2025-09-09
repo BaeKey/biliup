@@ -1,8 +1,9 @@
 from typing import Optional
 from urllib.parse import unquote, urlparse, parse_qs, urlencode, urlunparse
-
+import execjs
 import requests
 import random
+import os
 
 from biliup.common.util import client
 from . import logger, match1, random_user_agent, json_loads
@@ -202,34 +203,96 @@ class Douyin(DownloadBase):
             except:
                 pass
 
+    async def get_xbogus(self, url: str) -> str:
+        """X-bogus算法"""
+        try:
+            query = urlparse(url).query
+            user_agent = self.fake_headers.get('user-agent', DouyinUtils.DOUYIN_USER_AGENT)
+            
+            # 查找x-bogus.js文件
+            js_script_path = None
+            possible_paths = [
+                os.path.join(os.path.dirname(__file__), 'douyin/x-bogus.js')
+            ]
+            
+            for path in possible_paths:
+                if os.path.exists(path):
+                    js_script_path = path
+                    break
+            
+            if js_script_path:
+                with open(js_script_path, 'r', encoding='utf-8') as f:
+                    js_code = f.read()
+                xbogus = execjs.compile(js_code).call('sign', query, user_agent)
+                return xbogus
+            else:
+                logger.warning(f"{self.plugin_msg}: 未找到x-bogus.js文件，可能无法绕过风控")
+                return ""
+        except Exception as e:
+            logger.warning(f"{self.plugin_msg}: X-Bogus生成失败: {e}")
+            return ""
+
     async def get_web_room_info(self, web_rid: str) -> dict:
         query = {
             'web_rid': web_rid,
-            # 2025-08-01 服务端暂不校验以下参数的值，只校验参数存在
             'enter_from': random.choice(['link_share', 'web_live']),
             'a_bogus': '0',
         }
         target_url = DouyinUtils.build_request_url(f"https://live.douyin.com/webcast/room/web/enter/", query)
+        
+        # 添加X-Bogus参数以绕过风控
+        xbogus = await self.get_xbogus(target_url)
+        if xbogus:
+            target_url = target_url + "&X-Bogus=" + xbogus
+            
         logger.debug(f"{self.plugin_msg}: get_web_room_info {target_url}")
-        web_info = await client.get(target_url, headers=self.fake_headers)
-        web_info = json_loads(web_info.text)
+        
+        try:
+            web_info = await client.get(target_url, headers=self.fake_headers)
+            if not web_info.text or web_info.text.strip() == "":
+                logger.error(f"{self.plugin_msg}: 网页端接口返回空内容，可能遇到风控")
+                return {'data': {}}
+            web_info = json_loads(web_info.text)
+        except Exception as e:
+            logger.error(f"{self.plugin_msg}: 网页端请求失败: {e}")
+            return {'data': {}}
+            
         logger.debug(f"{self.plugin_msg}: get_web_room_info {web_info}")
         return web_info
 
     async def get_h5_room_info(self, sec_user_id: str, room_id: str) -> dict:
         if not sec_user_id:
             raise ValueError("sec_user_id is None")
+        
         query = {
-            'type_id': 0,
-            'live_id': 1,
-            'version_code': '99.99.99',
-            'app_id': 1128,
-            'room_id': room_id if room_id else 2, # 必要但不校验
-            'sec_user_id': sec_user_id
+            "verifyFp": "verify_lk07kv74_QZYCUApD_xhiB_405x_Ax51_GYO9bUIyZQVf",
+            "type_id": "0",
+            "live_id": "1",
+            "room_id": room_id if room_id else "2",
+            "sec_user_id": sec_user_id,
+            "app_id": "1128",
+            "msToken": "wrqzbEaTlsxt52-vxyZo_mIoL0RjNi1ZdDe7gzEGMUTVh_HvmbLLkQrA_1HKVOa2C6gkxb6IiY6TY2z8enAkPEwGq--gM-me3Yudck2ailla5Q4osnYIHxd9dI4WtQ==",
         }
-        info = await client.get("https://webcast.amemv.com/webcast/room/reflow/info/",
-                    params=query, headers=self.fake_headers)
-        info = json_loads(info.text)
+        
+        # 构建完整URL
+        base_url = "https://webcast.amemv.com/webcast/room/reflow/info/"
+        full_url = base_url + "?" + urlencode(query)
+        
+        # 添加X-Bogus参数
+        xbogus = await self.get_xbogus(full_url)
+        if xbogus:
+            full_url = full_url + "&X-Bogus=" + xbogus
+            
+        try:
+            info = await client.get(full_url, headers=self.fake_headers)
+            if not info.text or info.text.strip() == "":
+                logger.error(f"{self.plugin_msg}: H5接口返回空内容，可能遇到风控")
+                return {'data': {}}
+            info = json_loads(info.text)
+        except Exception as e:
+            logger.error(f"{self.plugin_msg}: H5请求失败: {e}")
+            return {'data': {}}
+            
         logger.debug(f"{self.plugin_msg}: get_h5_room_info {info}")
         return info
 
