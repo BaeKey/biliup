@@ -1,7 +1,6 @@
 from typing import Optional
 from urllib.parse import unquote, urlparse, parse_qs, urlencode, urlunparse
 import execjs
-from quickjs import Function
 import requests
 import random
 import os
@@ -213,30 +212,23 @@ class Douyin(DownloadBase):
             )
     
             # 查找 x-bogus.js 文件
-            js_script_path = None
-            possible_paths = [
-                os.path.join(os.path.dirname(__file__), 'douyin/x-bogus.js')
-            ]
-    
-            for path in possible_paths:
-                if os.path.exists(path):
-                    js_script_path = path
-                    break
-    
-            if not js_script_path:
-                logger.warning(f"{self.plugin_msg}: 未找到x-bogus.js文件，可能无法绕过风控")
+            js_script_path = os.path.join(os.path.dirname(__file__), 'douyin/x-bogus.js')
+            if not os.path.exists(js_script_path):
+                logger.warning(f"{self.plugin_msg}: 未找到 x-bogus.js 文件，可能无法绕过风控")
                 return ""
     
             # 读取 JS 文件内容
             with open(js_script_path, 'r', encoding='utf-8') as f:
                 js_code = f.read()
     
-            # 用 quickjs 执行 sign 函数
-            func = Function("sign_wrapper", js_code + "\nreturn sign;")
-            sign = func()
-            xbogus = sign(query, user_agent)
+            # 使用 execjs 执行 sign 函数
+            ctx = execjs.get('Node').compile(js_code)
+            xbogus = ctx.call("sign", query, user_agent)
             return xbogus
     
+        except execjs.RuntimeUnavailableError:
+            logger.error(f"{self.plugin_msg}: Node.js 未安装或不可用，请先安装 Node.js")
+            return ""
         except Exception as e:
             logger.warning(f"{self.plugin_msg}: X-Bogus生成失败: {e}")
             return ""

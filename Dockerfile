@@ -19,6 +19,24 @@ ENV LC_ALL="C.UTF-8"
 EXPOSE 19159/tcp
 VOLUME /opt
 
+# 安装 Node.js + 必要工具
+RUN set -eux; \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        wget \
+        git \
+        g++ \
+        xz-utils \
+    ; \
+    # 安装 Node.js LTS 版本
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
+    apt-get install -y nodejs \
+    ; \
+    # 清理缓存
+    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
+    rm -rf /var/lib/apt/lists/* /tmp/*
+
 RUN set -eux; \
 	\
 	savedAptMark="$(apt-mark showmanual)"; \
